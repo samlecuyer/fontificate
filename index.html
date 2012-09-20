@@ -2,52 +2,77 @@
 <head>
 	<script src="calabash.min.js"></script>
 	<script src="fontificate.js"></script>
-	<script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.1/jquery.min.js"></script>
+	<!-- <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.1/jquery.min.js"></script> -->
+	<script src="jquery.min.js"></script>
+	<link rel="stylesheet" type="text/css" href="style.css" />
+    <title>fontificate.js</title>
 </head>
 <body>
-	<div id="drop_zone" style="border: 2px dashed #bbb; padding: 25px; text-align: center;">
-		Drop .ttf files here
+	<a href="http://github.com/samlecuyer/fontificate"><img class="fork-banner" src="fork.png" alt="Fork me on GitHub"></a>
+	<div class="wrapper">
+		<div class="columnized">
+			<div class="spanner">
+	        	<h1>fontificate.js</h1>
+				<h4>a font-analysis library</h4>
+			</div>
+        	<p>
+				<span class="dropcap">F</span>ontificate is a Javascript library for displaying
+				TrueType font information in the browser.  It allows for .ttf files to be parsed  
+				and displayed asynchronously without any plugins in a modern browser.
+			</p>
+			<p>
+				To see an example, drag and drop a .ttf file in the box below to have is parsed.
+				Or, you can drag and drop a non-ttf file to watch it be rejected.
+			</p>
+		</div>
+		<div id="drop_zone" style="border: 2px dashed #bbb; padding: 25px; text-align: center;">
+			Drop .ttf files here
+		</div>
+		<div>
+			<ul id="output"/>
+		</div>
+		<br/>
 	</div>
-	<div>
-		<ul id="output"/>
-	</div>
-	<br/>
-	<center><h1>I hacked this together in an evening.  Documentation to come.  Look at the source.</h1><center>
 
 <script>
-	var nameLabels =
-	['Copyright notice','Font family','Font subfamily','Subfamily identifier','Full name', 'Version',
-	'Postscript name','Trademark notice','Manufacturer name','Designer','Description','Vendor Url',
-	'Designer Url','License'];
-	function handleDragOver(evt) {
-		evt.stopPropagation();
-		evt.preventDefault();
-		evt.dataTransfer.dropEffect = 'copy';
-	}
-	function handleFileSelect(evt) {
-		evt.stopPropagation();
-		evt.preventDefault();
-		var files = evt.dataTransfer.files;
-		for (var i = 0, f; f = files[i]; i++) {
-			fontificate(f)
-			.then(function(thefont) {
-				var names = thefont.getNamesForLanguage(0);
-				$('#output').empty();
-				names.forEach(function(record) {
-					if (record.nameID <= 13) {
-						var label = nameLabels[record.nameID] + ': ' + record.text;
-						$('#output').append($('<li/>').text(label));
-					}
-				});
-			}, function(reason) {
-				alert(reason);
-			});
+	if (window.File && window.FileReader && window.FileList && window.Blob) {
+		var nameLabels =
+		['Copyright notice','Font family','Font subfamily','Subfamily identifier','Full name', 'Version',
+		'Postscript name','Trademark notice','Manufacturer name','Designer','Description','Vendor Url',
+		'Designer Url','License'];
+		function handleDragOver(evt) {
+			evt.stopPropagation();
+			evt.preventDefault();
+			evt.dataTransfer.dropEffect = 'copy';
 		}
-		return false;
+		function handleFileSelect(evt) {
+			evt.stopPropagation();
+			evt.preventDefault();
+			var files = evt.dataTransfer.files;
+			for (var i = 0, f; f = files[i]; i++) {
+				fontificate(f)
+				.then(function(thefont) {
+					var names = thefont.getNamesForLanguage(0);
+					$('#output').empty();
+					names.forEach(function(record) {
+						if (record.nameID <= 13) {
+							var label = nameLabels[record.nameID] + ': ' + record.text;
+							$('#output').append($('<li/>').text(label));
+						}
+					});
+				}, function(reason) {
+					alert(reason);
+				});
+			}
+			return false;
+		}
+		var dropZone = document.getElementById('drop_zone');
+		dropZone.addEventListener('dragover', handleDragOver, false);
+		dropZone.addEventListener('drop', handleFileSelect, false);
+	} else {
+		$('#drop_zone').text('Sorry, your browser doesn\'t support Files');
 	}
-	var dropZone = document.getElementById('drop_zone');
-	dropZone.addEventListener('dragover', handleDragOver, false);
-	dropZone.addEventListener('drop', handleFileSelect, false);
+	
 </script>
 </body>
 </html>

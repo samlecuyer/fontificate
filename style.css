@@ -1,0 +1,91 @@
+div.wrapper {
+	width: 800px;
+	margin: 0px auto;
+	padding: 50px 30px;
+}
+
+div.columnized {
+	-moz-column-count: 2;
+	-moz-column-gap: 30px;
+	-webkit-column-count: 2;
+	-webkit-column-gap: 30px;
+	column-count: 2;
+	column-gap: 30px;
+}
+
+.wrapper > div {
+	margin: 30px 50px;
+	padding: 20px;
+	background-color: #fff;
+	border-radius: 15px;
+	-moz-border-radius: 15px;
+}
+
+.dropcap {
+	color: #5499c5;
+	display: inline;
+	float: left;
+	font-size: 3em;
+	margin: 0px;
+	padding: 0.2em 0.1em 0 0.1em;
+	text-transform: capitalize;
+}
+
+.wrapper > div > p {
+	-webkit-column-break-before: avoid;
+	-moz-column-break-before: avoid;
+	column-break-before: avoid;
+	line-height: 1.5em;
+	font-size: 1.1em;
+}
+
+h1, h4 {
+	text-align: center;
+	padding: 0px;
+	margin: 0px;
+}
+
+h4 { color: #808094; }
+
+.spanner {
+	-webkit-column-span: all;
+	-moz-column-span: all;
+	column-span: all;
+	padding: 5px;
+}
+
+body {
+	background-image: url('striped_lens.png');
+	background-repeat: repeat;
+	font-family:"Georgia", Times, serif;
+	color: #444;
+	padding: 0;
+	margin: 0;
+}
+
+img.fork-banner { position: fixed; top: 0; right: 0px; border: 0; }
+
+::selection	{ background:#c3effd; color:#F0F; }
+::-moz-selection { background:#c3effd; color:#F0F; }
+
+code .js-r1 { font-weight:bold; }
+code .js-cm { color: #008000; }
+code .js-re { color: #9933FF; }
+code .js-pn { color: #2aa198; }
+code .js-sl { color: #E62E00; }
+code .js-gl { color: #1975D1; text-decoration:underline}
+code .js-fn { color: #1975D1; }
+
+div.codeblock {
+	background-color: #141414;
+	color: #FCD116;
+	
+	margin: 30px 50px;
+	padding: 20px;
+	border-radius: 15px;
+	-moz-border-radius: 15px;
+	opacity:0.7;
+	position: relative;
+	white-space:nowrap;
+	overflow-x: auto;
+}
