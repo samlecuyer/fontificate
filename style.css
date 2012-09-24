@@ -65,6 +65,7 @@ body {
 
 ::selection	{ background:#c3effd; color:#F0F; }
 ::-moz-selection { background:#c3effd; color:#F0F; }
+img.fork-banner { position: fixed; top: 0; right: 0px; border: 0; }
 
 div.codeblock {
 	background-color: #141414;
