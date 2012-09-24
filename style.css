@@ -63,18 +63,8 @@ body {
 	margin: 0;
 }
 
-img.fork-banner { position: fixed; top: 0; right: 0px; border: 0; }
-
 ::selection	{ background:#c3effd; color:#F0F; }
 ::-moz-selection { background:#c3effd; color:#F0F; }
-
-code .js-r1 { font-weight:bold; }
-code .js-cm { color: #008000; }
-code .js-re { color: #9933FF; }
-code .js-pn { color: #2aa198; }
-code .js-sl { color: #E62E00; }
-code .js-gl { color: #1975D1; text-decoration:underline}
-code .js-fn { color: #1975D1; }
 
 div.codeblock {
 	background-color: #141414;

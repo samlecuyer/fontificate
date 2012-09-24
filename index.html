@@ -1,14 +1,12 @@
 <html>
 <head>
-	<script src="calabash.min.js"></script>
-	<script src="fontificate.js"></script>
-	<!-- <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.1/jquery.min.js"></script> -->
+<!-- <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.1/jquery.min.js"></script> -->
 	<script src="jquery.min.js"></script>
+	<script src="fontificate.js"></script>
 	<link rel="stylesheet" type="text/css" href="style.css" />
     <title>fontificate.js</title>
 </head>
 <body>
-	<a href="http://github.com/samlecuyer/fontificate"><img class="fork-banner" src="fork.png" alt="Fork me on GitHub"></a>
 	<div class="wrapper">
 		<div class="columnized">
 			<div class="spanner">
@@ -31,10 +29,9 @@
 		<div>
 			<ul id="output"/>
 		</div>
-		<br/>
 	</div>
 
-<script>
+	<script>
 	if (window.File && window.FileReader && window.FileList && window.Blob) {
 		var nameLabels =
 		['Copyright notice','Font family','Font subfamily','Subfamily identifier','Full name', 'Version',
@@ -49,10 +46,10 @@
 			evt.stopPropagation();
 			evt.preventDefault();
 			var files = evt.dataTransfer.files;
-			for (var i = 0, f; f = files[i]; i++) {
-				fontificate(f)
-				.then(function(thefont) {
-					var names = thefont.getNamesForLanguage(0);
+			for (var i = 0; i < files.length; i++) {
+				var f = files[i];
+				fontificate(f, true).then(function(thefont) {
+					var names = thefont.getNamesForFont(0);
 					$('#output').empty();
 					names.forEach(function(record) {
 						if (record.nameID <= 13) {
@@ -60,6 +57,8 @@
 							$('#output').append($('<li/>').text(label));
 						}
 					});
+					$('#output').parent().append(thefont.stringToSVG('sample text',1));
+					delete thefont.stream;
 				}, function(reason) {
 					alert(reason);
 				});
@@ -72,7 +71,7 @@
 	} else {
 		$('#drop_zone').text('Sorry, your browser doesn\'t support Files');
 	}
-	
-</script>
+
+	</script>
 </body>
 </html>
