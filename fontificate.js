@@ -154,7 +154,7 @@
 				record.nameID = slr.getUint16();
 				var length = slr.getUint16();
 				var offset = slr.getUint16();
-				record.text = platformIds[record.platformID]+'; '+slr.getStringAt(tb.offset + stringOffset + offset, length);
+				record.text = slr.getStringAt(tb.offset + stringOffset + offset, length);
 				namesTable.records.push(record);
 			}
 			font.name = namesTable;
@@ -301,9 +301,9 @@
 				cmap.format = slr.getUint16();
 				cmap.length = slr.getUint16();
 				cmap.language = slr.getUint16();
+				cmap.glyphIndexArray = new Array(256);
 				switch(cmap.format) {
 					case 0: {
-						cmap.glyphIndexArray = new Array(256);
 						for(var j = 0; j < 256; j++) {
 							cmap.glyphIndexArray[j] = slr.getUint8();
 						}
@@ -332,6 +332,7 @@
 								for (var k = start; k < end; k++) {
 									if (rangeOffset === 0) {
 										glyphToCharacterMap[((k+delta)%65536)] = k;
+										cmap.glyphIndexArray[k] = ((k+delta)%65536);
 									} else {
 										var glyphOffset = curPos+((rangeOffset/2)+(k-start)+(i-segCount))*2;
 										slr.goto(glyphOffset);
@@ -341,6 +342,7 @@
 											glyphIndex %= 65536;
 											if (glyphToCharacterMap[glyphIndex] === 0) {
 												glyphToCharacterMap[glyphIndex] = k;
+												cmap.glyphIndexArray[k] = glyphIndex;
 											}
 										}
 									}
@@ -368,13 +370,32 @@
 			var numGlyphs = maxp.numGlyphs;
 			var glyphNames = post.glyphNames;
 
-			var glyphs = new Array(numGlyphs);	
+			var glyphs = new Array(numGlyphs);
 			for (var i = 0; i < numGlyphs-1; i++) {
+				if (offsets[i] === offsets[i+1]) {
+					continue;
+				}
 				var glyph = initGlyph(tb.offset + offsets[i], slr);
 				glyphs[i] = glyph;
 			}
 			glyf.glyphs = glyphs;
 			font.glyf = Object.freeze(glyf);
+		},
+		'hmtx': function(font) {
+			var tb = getTableByTag(font, 'hmtx');
+			var slr = font.stream;
+			slr.goto(tb.offset);
+			var hmetrics = {};
+	
+			var numOfLongHorMetrics = font.hhea.numberOfHMetrics;
+			hmetrics.longHorMetric = new Array(numOfLongHorMetrics);
+			for (var i = 0; i < numOfLongHorMetrics; i++) {
+				var metric = {};
+				metric.advanceWidth = slr.getUint16();
+				metric.leftSideBearing = slr.getInt16();
+				hmetrics.longHorMetric[i] = metric;
+			}
+			font.hmtx = Object.freeze(hmetrics);
 		}
 	};
 	
@@ -474,31 +495,42 @@
 		getGlyphAsSVGPath: function(glyph) {
 			var bb = glyph.boundingBox;
 			var svg = '<path d="';
-			var endInd = -1;
-			for (var i = 0; i < glyph.flags.length; i++) {
-				if (i === glyph.endPtsOfContours[endInd] && !(glyph.flags[i] & 0x01)) {
-					continue;
+			
+			var xcoords = [], ycoords = [], flags = [];
+			if (glyph.numberOfContours === 1) {
+				xcoords.push(glyph.xCoords);
+				ycoords.push(glyph.yCoords);
+				flags.push(glyph.flags);
+			} else if (glyph.numberOfContours > 1) {
+				var start = 0;
+				for (var i in glyph.endPtsOfContours) {
+					xcoords.push(glyph.xCoords.slice(start, glyph.endPtsOfContours[i]+1));
+					ycoords.push(glyph.yCoords.slice(start, glyph.endPtsOfContours[i]+1));
+					flags.push(glyph.flags.slice(start, glyph.endPtsOfContours[i]+1));
+					start = glyph.endPtsOfContours[i]+1;
 				}
-				if (i === 0 || i === glyph.endPtsOfContours[endInd]+1) {
-					svg += " M"+glyph.xCoords[i]+','+glyph.yCoords[i];
-					endInd++;
-				} else {
-					if (i > glyph.endPtsOfContours[endInd]) {
-						throw "missed the endpoint: "+glyph.endPtsOfContours[endInd]+ " at " +i;
-					}
-					if (glyph.flags[i] & 0x01) { // on the curve
-						svg += " L"+glyph.xCoords[i]+','+glyph.yCoords[i];
-					} else if (i < glyph.flags.length-1) {
-						if (glyph.flags[i+1] & 0x01) {
-							svg += " Q"+glyph.xCoords[i]+','+glyph.yCoords[i];
-							svg += " "+glyph.xCoords[i+1]+','+glyph.yCoords[i+1];
-							i++;
-						} else if (i < glyph.flags.length-2){
-							console.log('TODO: cubic bezier curves need to be handled properly');
-							svg += " C"+glyph.xCoords[i]+','+glyph.yCoords[i];
-							svg += " "+glyph.xCoords[i+1]+','+glyph.yCoords[i+1];
-							svg += " "+glyph.xCoords[i+2]+','+glyph.yCoords[i+2];
-							i += 2;
+			}
+			for (var i = 0; i < glyph.numberOfContours; i++) {
+				for (var k = 0; k < flags[i].length; k++) {
+					if (k === 0) {
+						svg += " M"+xcoords[i][k]+','+ycoords[i][k];
+					} else if (flags[i][k] & 0x01) {
+						svg += " L"+xcoords[i][k]+','+ycoords[i][k];
+					} else {
+						if (flags[i][k+1] & 0x01 || k == flags[i].length-2) {
+							svg += " Q"+xcoords[i][k]+','+ycoords[i][k];
+							svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
+							k++;
+						} else if (k < flags[i].length-2){
+							// 	var l = 0;
+							// 	for (var m = k; !(flags[i][m] & 0x01) && m < flags[i].length; m++) {
+							// 		l++;
+							// 	} // if l > 2, we have higher order splines and svgs won't cut it
+							console.log('TODO: handle higher than n=3 b-splines');
+							svg += " C"+xcoords[i][k]+','+ycoords[i][k];
+							svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
+							svg += " "+xcoords[i][k+2]+','+ycoords[i][k+2];
+							k += 2;
 						}
 					}
 				}
@@ -506,37 +538,48 @@
 			svg += '"/>';
 			return svg;
 		},
-		getGlyphForCharacter: function(charc) {
+		getGlyphIndexForCharacterCode: function(charc) {
 			var code = charc.charCodeAt(0);
-			if (code > 255) {
-				throw "Currently unsupported";
-			}
 			for (var i in this.cmap.cmaps) {
-				if (this.cmap.cmaps[i].format === 0) {
-					var glyphIndex = this.cmap.cmaps[i].glyphIndexArray[code];
-					return this.glyf.glyphs[glyphIndex];
+				var glyphIndex = this.cmap.cmaps[i].glyphIndexArray[code];
+				if (glyphIndex)	{
+					return glyphIndex;
 				}
+			}
+			return 0;
+		},
+		_getHmtxForChar: function(index) {
+			if (this.post.isFixedPitch) {
+				return this.hmtx.longHorMetric[0];
+			} else {
+				return this.hmtx.longHorMetric[index];
 			}
 		},
 		stringToSVG: function(str, height) {
 			var xOffset = 0,
-				maxX = 0, maxY = 0, minY = 0,
 				output = '';
 			for (var i = 0; i < str.length; i++) {
-				var glyph = this.getGlyphForCharacter(str[i]);
-				var bb = glyph.boundingBox;
-				var path = this.getGlyphAsSVGPath(glyph);
-				var wrapped = '<g transform="translate('+xOffset+', 0)">\n'+path+'\n</g>';
+				var index = this.getGlyphIndexForCharacterCode(str[i]);
+				var hmtx = this._getHmtxForChar(index);
+				var glyph = this.glyf.glyphs[index];
+				var wrapped = '';
+				try {
+					if (glyph) {
+						var path = this.getGlyphAsSVGPath(glyph);
+						wrapped = '<g transform="translate('+(xOffset + hmtx.leftSideBearing)+', 0)">\n'+path+'\n</g>';
+					}
+				} catch (e) {
+					console.log('error rendering "'+str[i]+'": '+e);
+				}
 				output += wrapped;
-				xOffset += bb.upX;
-				maxY = Math.max(maxY, bb.upY);
-				minY = Math.min(minY, bb.llY);
+				xOffset += hmtx.advanceWidth;
 			}
-			var actualHeight = maxY-minY;
-			var wholeWord = '<g transform="translate(0,'+maxY+') scale(1,-1)">\n'+output+'\n</g>';
+			output += '\n<line x1="0" y1="0" x2="'+xOffset+'" y2="0" style="stroke-width: 10; stroke: red;"/>';
+			var actualHeight = this.hhea.ascender - this.hhea.descender;
+			var wholeWord = '<g transform="translate(0,'+this.hhea.ascender+') scale(1,-1)">\n'+output+'\n</g>';
 			var width = height*(xOffset/actualHeight);
 			var svg = 
-			'<svg width="'+width+'cm" height="'+height+'cm" viewBox="0 '+minY+' '+xOffset+' '+(actualHeight-minY)+'" xmlns="http://www.w3.org/2000/svg" version="1.1">\n'+
+			'<svg width="'+width+'px" height="'+height+'px" viewBox="0 '+this.hhea.descender+' '+xOffset+' '+(actualHeight-this.hhea.descender)+'" xmlns="http://www.w3.org/2000/svg" version="1.1">\n'+
 				wholeWord +
 			'\n</svg>'; 
 			return svg;
@@ -544,6 +587,7 @@
 		initTables: function() {
 			initializers['head'](this);
 			initializers['hhea'](this);
+			initializers['hmtx'](this);
 			initializers['maxp'](this);
 			initializers['post'](this);
 			initializers['loca'](this);

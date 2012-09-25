@@ -58,7 +58,12 @@
 							$('#output').append($('<li/>').text(label));
 						}
 					});
-					$('#output').parent().append(thefont.stringToSVG('sample text',1));
+					var names = thefont.getNamesForFont();
+					var sampleText = names.records.filter(function(name) {
+						return name.nameID == 19;
+					})[0];
+					sampleText = sampleText? sampleText.text: 'The quick brown fox jumped over the lazy dog.';
+					$('#output').parent().append(thefont.stringToSVG(sampleText,30));
 					delete thefont.stream;
 				}, function(reason) {
 					alert(reason);
