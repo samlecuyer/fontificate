@@ -51,7 +51,7 @@
 				var f = files[i];
 				fontificate(f, true).then(function(thefont) {
 					var names = thefont.getNamesForFont(0);
-					$('#output').empty();
+					$('#drop_zone').hide();
 					names.forEach(function(record) {
 						if (record.nameID <= 13) {
 							var label = nameLabels[record.nameID] + ': ' + record.text;
