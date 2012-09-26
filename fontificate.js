@@ -27,7 +27,7 @@
 					console.log('error rendering "'+str[i]+'": '+e);
 				}
 				output += wrapped;
-				xOffset += hmtx.advanceWidth;
+				xOffset += (hmtx.advanceWidth + kern);
 			}
 			output += '\n<line x1="0" y1="0" x2="'+xOffset+'" y2="0" style="stroke-width: 10; stroke: red;"/>';
 			var actualHeight = this.font.hhea.ascender - this.font.hhea.descender;
@@ -503,11 +503,16 @@
 			slr.goto(tb.offset);
 			var kerning = {};
 
-			kerning.version = slr.get32Fixed();
-			kerning.nTables = slr.getUint32();
+			var fword1 = slr.getUint16();
+			var fword2 = slr.getUint16();
+			if (fword1 === 1 && fword2 === 0) {
+				kerning.version = 1.0;
+				kerning.nTables = slr.getUint32();
+			} else {
+				kerning.version = fword1;
+				kerning.nTables = fword2;
+			}
 			kerning.tables = new Array(kerning.nTables);
-			//kerning.version = slr.getUint16();
-			//kerning.nTables = slr.getUint16();
 			for (var i = 0; i < kerning.nTables; i++) {
 				var kern = {};
 				kern.length = slr.getUint32();
@@ -527,9 +532,9 @@
 							var value = slr.getInt16();
 							kern.pairs[key] = value;
 						}
-						kerning.tables[i] = kern; 
 					} break;
 				}
+				kerning.tables[i] = kern;
 			}
 			font.kern = Object.freeze(kerning);
 		}
