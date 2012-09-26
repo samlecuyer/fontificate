@@ -2,6 +2,97 @@
 * Copyright (c) 2012 sam l'ecuyer; Licensed MIT */
 (function(window, $, undefined) {
 	
+	var KeySet = function(format, font) {
+		if (format !== 'svg') {
+			throw 'Unsupported rendering output format';
+		}
+		this.font = font;
+	}
+	KeySet.prototype = {
+		render: function(text, height) {
+			var glyphIds = getTextAsGlyphIds(text, this.font),
+				xOffset = 0,
+				output = '';
+			for (var i in glyphIds) {
+				var hmtx = this.font.getHmtxForChar(glyphIds[i]);
+				var kern = this.font.getKernForPair(glyphIds[i-1],glyphIds[i]);
+				var glyph = this.font.glyf.glyphs[glyphIds[i]];
+				var wrapped = '';
+				try {
+					if (glyph) {
+						var path = getGlyphAsSVGPath(glyph);
+						wrapped = '<g transform="translate('+(xOffset + hmtx.leftSideBearing + kern)+', 0)">\n'+path+'\n</g>';
+					}
+				} catch (e) {
+					console.log('error rendering "'+str[i]+'": '+e);
+				}
+				output += wrapped;
+				xOffset += hmtx.advanceWidth;
+			}
+			output += '\n<line x1="0" y1="0" x2="'+xOffset+'" y2="0" style="stroke-width: 10; stroke: red;"/>';
+			var actualHeight = this.font.hhea.ascender - this.font.hhea.descender;
+			var wholeWord = '<g transform="translate(0,'+this.font.hhea.ascender+') scale(1,-1)">\n'+output+'\n</g>';
+			var width = height*(xOffset/actualHeight);
+			var svg = 
+			'<svg width="'+width+'px" height="'+height+'px" viewBox="0 '+this.font.hhea.descender+' '+xOffset+' '+(actualHeight-this.font.hhea.descender)+'" xmlns="http://www.w3.org/2000/svg" version="1.1">\n'+
+			wholeWord +
+			'\n</svg>'; 
+			return svg;
+		},
+	};
+	
+	function getTextAsGlyphIds(text, font) {
+		var glyphIds = new Array(text.length);
+		for (var i = 0; i < text.length; i++) {
+			glyphIds[i] = font.getGlyphIndexForCharacterCode(text[i]);
+		}
+		return glyphIds;
+	}
+	
+	function getGlyphAsSVGPath(glyph) {
+		var bb = glyph.boundingBox;
+		var svg = '<path d="';
+		
+		var xcoords = [], ycoords = [], flags = [];
+		if (glyph.numberOfContours === 1) {
+			xcoords.push(glyph.xCoords);
+			ycoords.push(glyph.yCoords);
+			flags.push(glyph.flags);
+		} else if (glyph.numberOfContours > 1) {
+			var start = 0;
+			for (var i in glyph.endPtsOfContours) {
+				xcoords.push(glyph.xCoords.slice(start, glyph.endPtsOfContours[i]+1));
+				ycoords.push(glyph.yCoords.slice(start, glyph.endPtsOfContours[i]+1));
+				flags.push(glyph.flags.slice(start, glyph.endPtsOfContours[i]+1));
+				start = glyph.endPtsOfContours[i]+1;
+			}
+		}
+		for (var i = 0; i < glyph.numberOfContours; i++) {
+			for (var k = 0; k < flags[i].length; k++) {
+				if (k === 0) {
+					svg += " M"+xcoords[i][k]+','+ycoords[i][k];
+				} else if (flags[i][k] & 0x01) {
+					svg += " L"+xcoords[i][k]+','+ycoords[i][k];
+				} else {
+					if (flags[i][k+1] & 0x01 || k == flags[i].length-2) {
+						svg += " Q"+xcoords[i][k]+','+ycoords[i][k];
+						svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
+						k++;
+					} else if (k < flags[i].length-2){
+						console.log('TODO: handle higher than n=3 b-splines');
+						svg += " C"+xcoords[i][k]+','+ycoords[i][k];
+						svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
+						svg += " "+xcoords[i][k+2]+','+ycoords[i][k+2];
+						k += 2;
+					}
+				}
+			}
+		}
+		svg += '"/>';
+		return svg;
+	}
+	
+	
 	function _StreamReader(arrayBuffer, offset) {
 		var i = offset || 0;
 		var view = new window.DataView(arrayBuffer, i);
@@ -389,13 +480,58 @@
 	
 			var numOfLongHorMetrics = font.hhea.numberOfHMetrics;
 			hmetrics.longHorMetric = new Array(numOfLongHorMetrics);
-			for (var i = 0; i < numOfLongHorMetrics; i++) {
+			var i;
+			for (i = 0; i < numOfLongHorMetrics; i++) {
 				var metric = {};
 				metric.advanceWidth = slr.getUint16();
 				metric.leftSideBearing = slr.getInt16();
 				hmetrics.longHorMetric[i] = metric;
 			}
+			var advanceWidth = hmetrics.longHorMetric[i-1].advanceWidth;
+			for (;i < font.maxp.numGlyphs; i++) {
+				var metric = {};
+				metric.advanceWidth = advanceWidth;
+				metric.leftSideBearing = slr.getInt16();
+				hmetrics.longHorMetric[i] = metric;
+			}
 			font.hmtx = Object.freeze(hmetrics);
+		},
+		'kern': function(font) {
+			var tb = getTableByTag(font, 'kern');
+			if (!tb) { return; }
+			var slr = font.stream;
+			slr.goto(tb.offset);
+			var kerning = {};
+
+			kerning.version = slr.get32Fixed();
+			kerning.nTables = slr.getUint32();
+			kerning.tables = new Array(kerning.nTables);
+			//kerning.version = slr.getUint16();
+			//kerning.nTables = slr.getUint16();
+			for (var i = 0; i < kerning.nTables; i++) {
+				var kern = {};
+				kern.length = slr.getUint32();
+				kern.coverage = slr.getUint16();
+				kern.tupleIndex = slr.getUint16();
+				switch (kern.coverage & 0x00ff) {
+					case 0: {
+						// step 1: ignore these
+						var nPairs = slr.getUint16();
+						var searchRange = slr.getUint16();
+						var entrySelector = slr.getUint16();
+						var rangeShift = slr.getUint16();
+						kern.pairs = {};
+						for (var j = 0; j < kern.nPairs; j++) {
+						// step 2: remember that native code can search faster
+							var key = slr.getUint32();
+							var value = slr.getInt16();
+							kern.pairs[key] = value;
+						}
+						kerning.tables[i] = kern; 
+					} break;
+				}
+			}
+			font.kern = Object.freeze(kerning);
 		}
 	};
 	
@@ -492,52 +628,6 @@
 				return langNames? langNames[0].text: undefined;
 			}
 		},
-		getGlyphAsSVGPath: function(glyph) {
-			var bb = glyph.boundingBox;
-			var svg = '<path d="';
-			
-			var xcoords = [], ycoords = [], flags = [];
-			if (glyph.numberOfContours === 1) {
-				xcoords.push(glyph.xCoords);
-				ycoords.push(glyph.yCoords);
-				flags.push(glyph.flags);
-			} else if (glyph.numberOfContours > 1) {
-				var start = 0;
-				for (var i in glyph.endPtsOfContours) {
-					xcoords.push(glyph.xCoords.slice(start, glyph.endPtsOfContours[i]+1));
-					ycoords.push(glyph.yCoords.slice(start, glyph.endPtsOfContours[i]+1));
-					flags.push(glyph.flags.slice(start, glyph.endPtsOfContours[i]+1));
-					start = glyph.endPtsOfContours[i]+1;
-				}
-			}
-			for (var i = 0; i < glyph.numberOfContours; i++) {
-				for (var k = 0; k < flags[i].length; k++) {
-					if (k === 0) {
-						svg += " M"+xcoords[i][k]+','+ycoords[i][k];
-					} else if (flags[i][k] & 0x01) {
-						svg += " L"+xcoords[i][k]+','+ycoords[i][k];
-					} else {
-						if (flags[i][k+1] & 0x01 || k == flags[i].length-2) {
-							svg += " Q"+xcoords[i][k]+','+ycoords[i][k];
-							svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
-							k++;
-						} else if (k < flags[i].length-2){
-							// 	var l = 0;
-							// 	for (var m = k; !(flags[i][m] & 0x01) && m < flags[i].length; m++) {
-							// 		l++;
-							// 	} // if l > 2, we have higher order splines and svgs won't cut it
-							console.log('TODO: handle higher than n=3 b-splines');
-							svg += " C"+xcoords[i][k]+','+ycoords[i][k];
-							svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
-							svg += " "+xcoords[i][k+2]+','+ycoords[i][k+2];
-							k += 2;
-						}
-					}
-				}
-			}
-			svg += '"/>';
-			return svg;
-		},
 		getGlyphIndexForCharacterCode: function(charc) {
 			var code = charc.charCodeAt(0);
 			for (var i in this.cmap.cmaps) {
@@ -548,51 +638,47 @@
 			}
 			return 0;
 		},
-		_getHmtxForChar: function(index) {
+		getHmtxForChar: function(index) {
 			if (this.post.isFixedPitch) {
 				return this.hmtx.longHorMetric[0];
 			} else {
 				return this.hmtx.longHorMetric[index];
 			}
 		},
-		stringToSVG: function(str, height) {
-			var xOffset = 0,
-				output = '';
-			for (var i = 0; i < str.length; i++) {
-				var index = this.getGlyphIndexForCharacterCode(str[i]);
-				var hmtx = this._getHmtxForChar(index);
-				var glyph = this.glyf.glyphs[index];
-				var wrapped = '';
-				try {
-					if (glyph) {
-						var path = this.getGlyphAsSVGPath(glyph);
-						wrapped = '<g transform="translate('+(xOffset + hmtx.leftSideBearing)+', 0)">\n'+path+'\n</g>';
+		getKernForPair: function(left, right) {
+			if (this.kern && (left !== undefined) && (right !== undefined)) {
+				var tables = this.kern.nTables;
+				for (var i = 0; i < tables; i++) {
+					var kern = this.kern.tables[i];
+					switch(kern.coverage & 0x00ff) {
+						case 0: {
+							// the fact that javascript does native hashmapping
+							// is great for out purposes
+							var key = ((left & 0xffff) << 16) | (right & 0xffff);
+							return kern.pairs[key] || 0;
+						} break;
+						case 4: {
+							
+						}
 					}
-				} catch (e) {
-					console.log('error rendering "'+str[i]+'": '+e);
 				}
-				output += wrapped;
-				xOffset += hmtx.advanceWidth;
 			}
-			output += '\n<line x1="0" y1="0" x2="'+xOffset+'" y2="0" style="stroke-width: 10; stroke: red;"/>';
-			var actualHeight = this.hhea.ascender - this.hhea.descender;
-			var wholeWord = '<g transform="translate(0,'+this.hhea.ascender+') scale(1,-1)">\n'+output+'\n</g>';
-			var width = height*(xOffset/actualHeight);
-			var svg = 
-			'<svg width="'+width+'px" height="'+height+'px" viewBox="0 '+this.hhea.descender+' '+xOffset+' '+(actualHeight-this.hhea.descender)+'" xmlns="http://www.w3.org/2000/svg" version="1.1">\n'+
-				wholeWord +
-			'\n</svg>'; 
-			return svg;
+			return 0;
+		},
+		stringToSVG: function(text, height) {
+			var renderer = new KeySet('svg', this);
+			return renderer.render(text, height);
 		},
 		initTables: function() {
 			initializers['head'](this);
 			initializers['hhea'](this);
-			initializers['hmtx'](this);
 			initializers['maxp'](this);
+			initializers['hmtx'](this);
 			initializers['post'](this);
 			initializers['loca'](this);
 			initializers['glyf'](this);
 			initializers['cmap'](this);
+			initializers['kern'](this);
 		}
 	};
 	
