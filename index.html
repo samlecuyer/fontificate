@@ -7,7 +7,6 @@
     <title>fontificate.js</title>
 </head>
 <body>
-	<a href="http://github.com/samlecuyer/fontificate"><img class="fork-banner" src="fork.png" alt="Fork me on GitHub"></a>
 	<div class="wrapper">
 		<div class="columnized">
 			<div class="spanner">
@@ -27,7 +26,10 @@
 		<div id="drop_zone" style="border: 2px dashed #bbb; padding: 25px; text-align: center;">
 			Drop .ttf files here
 		</div>
-		<div>
+		<div id="infodiv" style="display: none;">
+			<label for="sampletext">Sample text:</label>
+			<input type="text" id="sampletext" value=""/>
+			<div id="sampleoutput"></div>
 			<ul id="output"/>
 		</div>
 	</div>
@@ -51,20 +53,25 @@
 				var f = files[i];
 				fontificate(f, true).then(function(thefont) {
 					var names = thefont.getNamesForFont(0);
-					$('#drop_zone').hide();
+					var sampleText = names.filter(function(name) {
+						return name.nameID == 19;
+					})[0];
+					sampleText = sampleText? sampleText.text: 'The "quick" (brown) fox jumped over the \'lazy\' dog.';
+					$('#sampleoutput').html(thefont.stringToSVG(sampleText,30));
+					$('input#sampletext').
+						on('change', function(e) {
+							var svg = thefont.stringToSVG(e.target.value,30);
+							$('#sampleoutput')[0].innerHTML = svg;
+							return false;
+						}).val(sampleText);
 					names.forEach(function(record) {
 						if (record.nameID <= 13) {
 							var label = nameLabels[record.nameID] + ': ' + record.text;
 							$('#output').append($('<li/>').text(label));
 						}
 					});
-					var names = thefont.getNamesForFont();
-					var sampleText = names.records.filter(function(name) {
-						return name.nameID == 19;
-					})[0];
-					sampleText = sampleText? sampleText.text: 'The quick brown fox jumped over the lazy dog.';
-					$('#output').parent().append(thefont.stringToSVG(sampleText,30));
-					delete thefont.stream;
+					$('#infodiv').show();
+					$('#drop_zone').hide();
 				}, function(reason) {
 					alert(reason);
 				});
