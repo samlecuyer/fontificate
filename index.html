@@ -7,6 +7,7 @@
     <title>fontificate.js</title>
 </head>
 <body>
+	<a href="http://github.com/samlecuyer/fontificate"><img class="fork-banner" src="fork.png" alt="Fork me on GitHub"></a>
 	<div class="wrapper">
 		<div class="columnized">
 			<div class="spanner">
@@ -56,7 +57,7 @@
 					var sampleText = names.filter(function(name) {
 						return name.nameID == 19;
 					})[0];
-					sampleText = sampleText? sampleText.text: 'The "quick" (brown) fox jumped over the \'lazy\' dog.';
+					sampleText = sampleText? sampleText.text: 'The quick brown fox jumped over the lazy dog.';
 					$('#sampleoutput').html(thefont.stringToSVG(sampleText,30));
 					$('input#sampletext').
 						on('change', function(e) {
