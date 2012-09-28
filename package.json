@@ -1,0 +1,29 @@
+{
+  "name": "fontificate",
+  "title": "fontificate.js",
+  "description": "A client-side font library",
+  "version": "0.0.1",
+  "homepage": "https://github.com/samlecuyer/fontificate",
+  "author": {
+    "name": "Sam L'Ecuyer",
+    "email": "samlecuyer@gmail.com",
+    "url": "samlecuyer.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/samlecuyer/fontificate.git"
+  },
+  "bugs": {
+    "url": "https://github.com/samlecuyer/fontificate/issues"
+  },
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "https://github.com/samlecuyer/fontificate/blob/master/LICENSE-MIT"
+    }
+  ],
+  "dependencies": {
+    "jquery": ">= 1.6"
+  },
+  "keywords": []
+}
