@@ -1,6 +1,7 @@
 /*! fontificate - v0.0.1 - 2012-09-19
 * Copyright (c) 2012 sam l'ecuyer; Licensed MIT */
 (function(window, $, undefined) {
+	"use strict";
 	
 	var KeySet = function(format, font) {
 		if (format !== 'svg') {
@@ -10,9 +11,10 @@
 	}
 	KeySet.prototype = {
 		render: function(text, height) {
-			var glyphIds = getTextAsGlyphIds(text, this.font),
+			var glyphIds = this.font.getTextAsGlyphIds(text),
 				xOffset = 0,
-				output = '';
+				output = '',
+				maxY = 0;
 			for (var i in glyphIds) {
 				var hmtx = this.font.getHmtxForChar(glyphIds[i]);
 				var kern = this.font.getKernForPair(glyphIds[i-1],glyphIds[i]);
@@ -21,53 +23,34 @@
 				try {
 					if (glyph) {
 						var path = getGlyphAsSVGPath(glyph);
-						wrapped = '<g transform="translate('+(xOffset + hmtx.leftSideBearing + kern)+', 0)">\n'+path+'\n</g>';
+						wrapped = '<g transform="translate('+(xOffset + Math.max(hmtx.leftSideBearing, 0) + kern)+', 0)">\n'+path+'\n</g>';
 					}
 				} catch (e) {
-					console.log('error rendering "'+str[i]+'": '+e);
+					console.log('error rendering "'+text[i]+'": '+e);
 				}
 				output += wrapped;
-				xOffset += hmtx.advanceWidth;
+				xOffset += (hmtx.advanceWidth + kern);
 			}
 			output += '\n<line x1="0" y1="0" x2="'+xOffset+'" y2="0" style="stroke-width: 10; stroke: red;"/>';
 			var actualHeight = this.font.hhea.ascender - this.font.hhea.descender;
 			var wholeWord = '<g transform="translate(0,'+this.font.hhea.ascender+') scale(1,-1)">\n'+output+'\n</g>';
-			var width = height*(xOffset/actualHeight);
-			var svg = 
-			'<svg width="'+width+'px" height="'+height+'px" viewBox="0 '+this.font.hhea.descender+' '+xOffset+' '+(actualHeight-this.font.hhea.descender)+'" xmlns="http://www.w3.org/2000/svg" version="1.1">\n'+
-			wholeWord +
-			'\n</svg>'; 
+			var svg = '<svg height="'+height+'px" viewBox="0 '+this.font.hhea.descender+' '+xOffset+' '+
+				(actualHeight-this.font.hhea.descender)+'" xmlns="http://www.w3.org/2000/svg" version="1.1">\n'+wholeWord +
+				'\n</svg>';
 			return svg;
 		},
 	};
 	
-	function getTextAsGlyphIds(text, font) {
-		var glyphIds = new Array(text.length);
-		for (var i = 0; i < text.length; i++) {
-			glyphIds[i] = font.getGlyphIndexForCharacterCode(text[i]);
-		}
-		return glyphIds;
-	}
-	
+	var cache = {};
 	function getGlyphAsSVGPath(glyph) {
 		var bb = glyph.boundingBox;
 		var svg = '<path d="';
 		
-		var xcoords = [], ycoords = [], flags = [];
-		if (glyph.numberOfContours === 1) {
-			xcoords.push(glyph.xCoords);
-			ycoords.push(glyph.yCoords);
-			flags.push(glyph.flags);
-		} else if (glyph.numberOfContours > 1) {
-			var start = 0;
-			for (var i in glyph.endPtsOfContours) {
-				xcoords.push(glyph.xCoords.slice(start, glyph.endPtsOfContours[i]+1));
-				ycoords.push(glyph.yCoords.slice(start, glyph.endPtsOfContours[i]+1));
-				flags.push(glyph.flags.slice(start, glyph.endPtsOfContours[i]+1));
-				start = glyph.endPtsOfContours[i]+1;
-			}
-		}
-		for (var i = 0; i < glyph.numberOfContours; i++) {
+		var segments = glyph.getSegmentedPoints();
+		var xcoords = segments.xcoords, 
+			ycoords = segments.ycoords, 
+			flags = segments.flags;
+		for (var i = 0; i < glyph.getContourCount(); i++) {
 			for (var k = 0; k < flags[i].length; k++) {
 				if (k === 0) {
 					svg += " M"+xcoords[i][k]+','+ycoords[i][k];
@@ -466,8 +449,13 @@
 				if (offsets[i] === offsets[i+1]) {
 					continue;
 				}
-				var glyph = initGlyph(tb.offset + offsets[i], slr);
+				var glyph = new Glyph(tb.offset + offsets[i], slr);
 				glyphs[i] = glyph;
+			}
+			for (var i = 0; i < numGlyphs-1; i++) {
+				if (glyphs[i] && glyphs[i].numberOfContours === -1) {
+					glyphs[i].resolve(glyphs);
+				}
 			}
 			glyf.glyphs = glyphs;
 			font.glyf = Object.freeze(glyf);
@@ -503,13 +491,19 @@
 			slr.goto(tb.offset);
 			var kerning = {};
 
-			kerning.version = slr.get32Fixed();
-			kerning.nTables = slr.getUint32();
+			var fword1 = slr.getUint16();
+			var fword2 = slr.getUint16();
+			if (fword1 === 1 && fword2 === 0) {
+				kerning.version = 1.0;
+				kerning.nTables = slr.getUint32();
+			} else {
+				kerning.version = fword1;
+				kerning.nTables = fword2;
+			}
 			kerning.tables = new Array(kerning.nTables);
-			//kerning.version = slr.getUint16();
-			//kerning.nTables = slr.getUint16();
 			for (var i = 0; i < kerning.nTables; i++) {
 				var kern = {};
+				kern.start = slr.offset();
 				kern.length = slr.getUint32();
 				kern.coverage = slr.getUint16();
 				kern.tupleIndex = slr.getUint16();
@@ -527,37 +521,55 @@
 							var value = slr.getInt16();
 							kern.pairs[key] = value;
 						}
-						kerning.tables[i] = kern; 
 					} break;
+					case 2: {
+						var rowWidth = slr.getUint16();
+						var leftOffsetTable = slr.getUint16();
+						var rightOffsetTable = slr.getUint16();
+						var array = slr.getUint16();
+						
+						slr.goto(kern.start+leftOffsetTable);
+						kern.leftOffsetTable = loadKernF2OffsetTable(slr);
+						slr.goto(kern.start+rightOffsetTable);
+						kern.rightOffsetTable = loadKernF2OffsetTable(slr);
+					}
 				}
+				kerning.tables[i] = kern;
 			}
 			font.kern = Object.freeze(kerning);
 		}
 	};
 	
-	function initGlyph(offset, slr) {
-		var glyph = {};
+	function loadKernF2OffsetTable(slr) {
+		var table = {};
+		table.firstGlyph = slr.getUint16();
+		var nGlyphs = slr.getUint16();
+		table.offsets = slr.getUint16Array(nGlyphs);
+		return table;
+	}
+	
+	function Glyph(offset, slr) {
 		slr.goto(offset);
 		
-		glyph.numberOfContours = slr.getInt16();
-		glyph.boundingBox = {};
-		glyph.boundingBox.llX = slr.getInt16();
-		glyph.boundingBox.llY = slr.getInt16();
-		glyph.boundingBox.upX = slr.getInt16();
-		glyph.boundingBox.upY = slr.getInt16();
-		if (glyph.numberOfContours >= 0) {
-			var endPtsOfContours = slr.getUint16Array(glyph.numberOfContours);
+		this.numberOfContours = slr.getInt16();
+		this.boundingBox = {};
+		this.boundingBox.llX = slr.getInt16();
+		this.boundingBox.llY = slr.getInt16();
+		this.boundingBox.upX = slr.getInt16();
+		this.boundingBox.upY = slr.getInt16();
+		if (this.numberOfContours >= 0) {
+			var endPtsOfContours = slr.getUint16Array(this.numberOfContours);
 			var instructionLength = slr.getUint16();
-			glyph.instructions = slr.getUint8Array(instructionLength);
+			this.instructions = slr.getUint8Array(instructionLength);
 			var totalNumberOfPoints = endPtsOfContours[endPtsOfContours.length-1] + 1;
-			glyph.flags = [];
+			this.flags = [];
 			for (var i = 0; i < totalNumberOfPoints; i++) {
 				var flag = slr.getUint8();
-				glyph.flags.push(flag);
+				this.flags.push(flag);
 				if (flag & 0x08) {
 					var repeat = slr.getUint8();
 					for (var j = 0; j < repeat; j++) {
-						glyph.flags.push(flag);
+						this.flags.push(flag);
 					}
 					i += repeat;
 				}
@@ -566,7 +578,7 @@
 			yCoords = [],
 			x = 0, y = 0;
 			for (var i = 0; i < totalNumberOfPoints; i++) {
-				var flag = glyph.flags[i];
+				var flag = this.flags[i];
 				if (flag & 0x10) {
 					if (flag & 0x02) { 
 						x += slr.getUint8(); 
@@ -581,7 +593,7 @@
 				xCoords[i] = x;
 			}
 			for (var i = 0; i < totalNumberOfPoints; i++) {
-				var flag = glyph.flags[i];
+				var flag = this.flags[i];
 				if (flag & 0x20) {
 					if (flag & 0x04) { 
 						y += slr.getUint8(); 
@@ -595,12 +607,112 @@
 				}
 				yCoords[i] = y;
 			}
-			glyph.xCoords = xCoords;
-			glyph.yCoords = yCoords;
-			glyph.endPtsOfContours = endPtsOfContours;
-		}		
-		return glyph;
+			this.xCoords = xCoords;
+			this.yCoords = yCoords;
+			this.endPtsOfContours = endPtsOfContours;
+		} else if (this.numberOfContours === -1) {
+			this.components = [];
+			var component;
+			do {
+				component = {};
+				component.flags = slr.getUint16();
+				component.glyphIndex = slr.getUint16();
+				if (component.flags & 0x01) {
+					component.argument1 = slr.getUint16();
+					component.argument2 = slr.getUint16();
+				} else {
+					component.argument1 = slr.getUint8();
+					component.argument2 = slr.getUint8();
+				}
+				if (component.flags & 0x02) {
+					component.xtranslate = component.argument1;
+					component.xtranslate = component.argument2;
+				} else {
+					component.point1 = component.argument1;
+					component.point2 = component.argument2;
+				}
+				if (component.flags & 0x08) {
+					var i = slr.getInt16();
+					component.xscale = i/ 0x4000;
+					component.yscale = i/ 0x4000;
+				} else if (component.flags & 0x40) {
+					component.xscale = slr.getInt16()/ 0x4000;
+					component.yscale = slr.getInt16()/ 0x4000;
+				} else if (component.flags & 0x80) {
+					component.xscale = slr.getInt16()/ 0x4000;
+					component.scale01 = slr.getInt16()/ 0x4000;
+					component.scale10 = slr.getInt16()/ 0x4000;
+					component.yscale = slr.getInt16()/ 0x4000;
+				}
+				this.components.push(component);
+			} while (component.flags & 0x20);
+		}
 	}
+	Glyph.prototype = {
+		resolve: function(glyphs) {
+			if (this.numberOfContours === -1) {
+				var firstIndex = 0,
+					firstContour = 0;
+				for (var i in this.components) {
+					var comp = this.components[i];
+					comp.firstIndex = firstIndex;
+					comp.firstContour = firstContour;
+					var glyph = glyphs[comp.glyphIndex];
+					if (glyph) {
+						glyph.resolve(glyphs);
+						firstIndex += glyph.getPointCount();
+						firstContour += glyph.getContourCount();
+						comp.glyph = glyph;
+					}
+				}
+			}
+		},
+		getPointCount: function() {
+			if (this.numberOfContours >= 0) {
+				return this.flags.length;
+			} else {
+				return this.components.reduce(function(p, c) {
+					return p + c.glyph.getPointCount();
+				},0);
+			}
+		},
+		getContourCount: function() {
+			if (this.numberOfContours >= 0) {
+				return this.numberOfContours;
+			} else {
+				return this.components.reduce(function(p, c) {
+					return p + c.glyph.getContourCount();
+				},0);
+			}
+		},
+		getSegmentedPoints: function() {
+			var xcoords = [], ycoords = [], flags = [];
+			if (this.numberOfContours === 1) {
+				xcoords.push(this.xCoords);
+				ycoords.push(this.yCoords);
+				flags.push(this.flags);
+			} else if (this.numberOfContours > 1) {
+				var start = 0;
+				for (var i in this.endPtsOfContours) {
+					xcoords.push(this.xCoords.slice(start, this.endPtsOfContours[i]+1));
+					ycoords.push(this.yCoords.slice(start, this.endPtsOfContours[i]+1));
+					flags.push(this.flags.slice(start, this.endPtsOfContours[i]+1));
+					start = this.endPtsOfContours[i]+1;
+				}
+			} else if (this.numberOfContours === -1) {
+				this.components.forEach(function(comp) {
+					var glyph = comp.glyph;
+					var segmentedPoints = glyph.getSegmentedPoints();
+					for (var i = 0; i < segmentedPoints.flags.length; i++) {
+						xcoords.push(segmentedPoints.xcoords[i]);
+						ycoords.push(segmentedPoints.ycoords[i]);
+						flags.push(segmentedPoints.flags[i]);
+					}
+				});
+			}
+			return { xcoords: xcoords, ycoords: ycoords, flags: flags }
+		}
+	};
 	
 	function Font(slr){
 		this.stream = slr;
@@ -652,10 +764,21 @@
 					var kern = this.kern.tables[i];
 					switch(kern.coverage & 0x00ff) {
 						case 0: {
-							// the fact that javascript does native hashmapping
-							// is great for out purposes
 							var key = ((left & 0xffff) << 16) | (right & 0xffff);
 							return kern.pairs[key] || 0;
+						} break;
+						case 2: {
+							var leftOffset = 0;
+							if (left >= kern.leftOffsetTable.firstGlyph) {
+								leftOffset = kern.leftOffsetTable.offsets[left-kern.leftOffsetTable.firstGlyph];
+							}
+							var rightOffset = 0;
+							if (right >= kern.rightOffsetTable.firstGlyph) {
+								rightOffset = kern.rightOffsetTable.offsets[right-kern.rightOffsetTable.firstGlyph];
+							}
+							var combinedOffset = leftOffset + rightOffset;
+							this.stream.goto(kern.start+combinedOffset);
+							return this.stream.getInt16();
 						} break;
 						case 4: {
 							
@@ -668,6 +791,13 @@
 		stringToSVG: function(text, height) {
 			var renderer = new KeySet('svg', this);
 			return renderer.render(text, height);
+		},
+		getTextAsGlyphIds: function(text) {
+			var glyphIds = new Array(text.length);
+			for (var i = 0; i < text.length; i++) {
+				glyphIds[i] = this.getGlyphIndexForCharacterCode(text[i]);
+			}
+			return glyphIds;
 		},
 		initTables: function() {
 			initializers['head'](this);
