@@ -21,7 +21,7 @@ fontificate(file).then(function(thefont) {
 </script>
 ```
 ## Demo
-
+Check out the demo [housed here](http://fontificate.samlecuyer.com)
 
 ## Documentation
 _(Coming soon)_
