@@ -615,7 +615,10 @@
 			this.components = [];
 			var component;
 			do {
-				component = {};
+				component = { 
+					xscale: 1.0, yscale: 1.0,
+					scale01: 0.0, scale10: 0.0 
+				};
 				component.flags = slr.getUint16();
 				component.glyphIndex = slr.getUint16();
 				if (component.flags & 0x01) {
@@ -627,7 +630,7 @@
 				}
 				if (component.flags & 0x02) {
 					component.xtranslate = component.argument1;
-					component.xtranslate = component.argument2;
+					component.ytranslate = component.argument2;
 				} else {
 					component.point1 = component.argument1;
 					component.point2 = component.argument2;
@@ -649,76 +652,92 @@
 			} while (component.flags & 0x20);
 		}
 	}
-		Glyph.prototype = {
-			resolve: function(glyphs) {
-				if (this.numberOfContours === -1) {
-					var firstIndex = 0,
-					firstContour = 0;
-					this.glyphs = glyphs;
-					for (var i in this.components) {
-						var comp = this.components[i];
-						comp.firstIndex = firstIndex;
-						comp.firstContour = firstContour;
-						var glyph = glyphs[comp.glyphIndex];
-						if (glyph) {
-							glyph.resolve(glyphs);
-							firstIndex += glyph.getPointCount();
-							firstContour += glyph.getContourCount();
-						}
+	
+	function linearTransformX(comp, x, y) {
+		var x1 = Math.round(x * comp.xscale + y * comp.scale10);
+		return x1 + comp.xtranslate;
+	}
+	function linearTransformY(comp, x, y) {
+		var y1 = Math.round(x * comp.scale01 + y * comp.yscale);
+		return y1 + comp.ytranslate;
+	}
+	
+	Glyph.prototype = {
+		resolve: function(glyphs) {
+			if (this.numberOfContours === -1) {
+				var firstIndex = 0,
+				firstContour = 0;
+				this.glyphs = glyphs;
+				for (var i in this.components) {
+					var comp = this.components[i];
+					comp.firstIndex = firstIndex;
+					comp.firstContour = firstContour;
+					var glyph = glyphs[comp.glyphIndex];
+					if (glyph) {
+						glyph.resolve(glyphs);
+						firstIndex += glyph.getPointCount();
+						firstContour += glyph.getContourCount();
 					}
 				}
-			},
-			getPointCount: function() {
-				if (this.numberOfContours >= 0) {
-					return this.flags.length;
-				} else {
-					var that = this;
-					return this.components.reduce(function(p, c) {
-						var glyph = that.glyphs[c.glyphIndex];
-						return p + c.glyph.getPointCount();
-					},0);
-				}
-			},
-			getContourCount: function() {
-				if (this.numberOfContours >= 0) {
-					return this.numberOfContours;
-				} else {
-					var that = this;
-					return this.components.reduce(function(p, c) {
-						var glyph = that.glyphs[c.glyphIndex];
-						return p + glyph.getContourCount();
-					},0);
-				}
-			},
-			getSegmentedPoints: function() {
-				var xcoords = [], ycoords = [], flags = [];
-				if (this.numberOfContours === 1) {
-					xcoords.push(this.xCoords);
-					ycoords.push(this.yCoords);
-					flags.push(this.flags);
-				} else if (this.numberOfContours > 1) {
-					var start = 0;
-					for (var i in this.endPtsOfContours) {
-						xcoords.push(this.xCoords.slice(start, this.endPtsOfContours[i]+1));
-						ycoords.push(this.yCoords.slice(start, this.endPtsOfContours[i]+1));
-						flags.push(this.flags.slice(start, this.endPtsOfContours[i]+1));
-						start = this.endPtsOfContours[i]+1;
-					}
-				} else if (this.numberOfContours === -1) {
-					var that = this;
-					this.components.forEach(function(comp) {
-						var glyph = that.glyphs[comp.glyphIndex];
-						var segmentedPoints = glyph.getSegmentedPoints();
-						for (var i = 0; i < segmentedPoints.flags.length; i++) {
-							xcoords.push(segmentedPoints.xcoords[i]);
-							ycoords.push(segmentedPoints.ycoords[i]);
-							flags.push(segmentedPoints.flags[i]);
-						}
-					});
-				}
-				return { xcoords: xcoords, ycoords: ycoords, flags: flags }
 			}
-		};
+		},
+		getPointCount: function() {
+			if (this.numberOfContours >= 0) {
+				return this.flags.length;
+			} else {
+				var that = this;
+				return this.components.reduce(function(p, c) {
+					var glyph = that.glyphs[c.glyphIndex];
+					return p + c.glyph.getPointCount();
+				},0);
+			}
+		},
+		getContourCount: function() {
+			if (this.numberOfContours >= 0) {
+				return this.numberOfContours;
+			} else {
+				var that = this;
+				return this.components.reduce(function(p, c) {
+					var glyph = that.glyphs[c.glyphIndex];
+					return p + glyph.getContourCount();
+				},0);
+			}
+		},
+		getSegmentedPoints: function() {
+			var xcoords = [], ycoords = [], flags = [];
+			if (this.numberOfContours === 1) {
+				xcoords.push(this.xCoords);
+				ycoords.push(this.yCoords);
+				flags.push(this.flags);
+			} else if (this.numberOfContours > 1) {
+				var start = 0;
+				for (var i in this.endPtsOfContours) {
+					xcoords.push(this.xCoords.slice(start, this.endPtsOfContours[i]+1));
+					ycoords.push(this.yCoords.slice(start, this.endPtsOfContours[i]+1));
+					flags.push(this.flags.slice(start, this.endPtsOfContours[i]+1));
+					start = this.endPtsOfContours[i]+1;
+				}
+			} else if (this.numberOfContours === -1) {
+				var that = this;
+				this.components.forEach(function(comp) {
+					var glyph = that.glyphs[comp.glyphIndex];
+					var segmentedPoints = glyph.getSegmentedPoints();
+					for (var i = 0; i < segmentedPoints.flags.length; i++) {
+						var newXCoords = segmentedPoints.xcoords[i].map(function(xc,ind) {
+							return linearTransformX(comp, xc, segmentedPoints.ycoords[i][ind]);
+						});
+						var newYCoords = segmentedPoints.ycoords[i].map(function(yc,ind) {
+							return linearTransformY(comp, segmentedPoints.xcoords[i][ind], yc);
+						});
+						xcoords.push(newXCoords);
+						ycoords.push(newYCoords);
+						flags.push(segmentedPoints.flags[i]);
+					}
+				});
+			}
+			return { xcoords: xcoords, ycoords: ycoords, flags: flags }
+		}
+	};
 
 	function Font(slr) {
 		this.stream = slr;
