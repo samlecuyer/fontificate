@@ -1,176 +1,3 @@
-(function(window, $, undefined) {
-	"use strict";
-
-	var KeySet = function(format, font) {
-		if (format !== 'svg') {
-			throw 'Unsupported rendering output format';
-		}
-		this.font = font;
-	};
-	KeySet.prototype = {
-		render: function(text, height) {
-			var glyphIds = this.font.getTextAsGlyphIds(text),
-			xOffset = 0,
-			output = '',
-			maxY = 0;
-			for (var i in glyphIds) {
-				var hmtx = this.font.getHmtxForChar(glyphIds[i]);
-				var kern = this.font.getKernForPair(glyphIds[i-1],glyphIds[i]);
-				var glyph = this.font.glyf.glyphs[glyphIds[i]];
-				var wrapped = '';
-				try {
-					if (glyph) {
-						var path = getGlyphAsSVGPath(glyph);
-						wrapped = '<g transform="translate('+(xOffset + Math.max(hmtx.leftSideBearing, 0) + kern)+', 0)">\n'+path+'\n</g>';
-					}
-				} catch (e) {
-					console.log('error rendering "'+text[i]+'": '+e);
-				}
-				output += wrapped;
-				xOffset += (hmtx.advanceWidth + kern);
-			}
-			output += '\n<line x1="0" y1="0" x2="'+xOffset+'" y2="0" style="stroke-width: 10; stroke: red;"/>';
-			var actualHeight = this.font.hhea.ascender - this.font.hhea.descender;
-			var wholeWord = '<g transform="translate(0,'+this.font.hhea.ascender+') scale(1,-1)">\n'+output+'\n</g>';
-			var svg = '<svg height="'+height+'px" viewBox="0 '+this.font.hhea.descender+' '+xOffset+' '+
-			(actualHeight-this.font.hhea.descender)+'" xmlns="http://www.w3.org/2000/svg" version="1.1">\n'+wholeWord +
-			'\n</svg>';
-			return svg;
-		}
-	};
-
-	var cache = {};
-	function getGlyphAsSVGPath(glyph) {
-		var bb = glyph.boundingBox;
-		var svg = '<path d="';
-
-		var segments = glyph.getSegmentedPoints();
-		var xcoords = segments.xcoords, 
-		ycoords = segments.ycoords, 
-		flags = segments.flags;
-		for (var i = 0; i < glyph.getContourCount(); i++) {
-			for (var k = 0; k < flags[i].length; k++) {
-				if (k === 0) {
-					svg += " M"+xcoords[i][k]+','+ycoords[i][k];
-				} else if (flags[i][k] & 0x01) {
-					svg += " L"+xcoords[i][k]+','+ycoords[i][k];
-				} else {
-					if (flags[i][k+1] & 0x01 || k === flags[i].length-2) {
-						svg += " Q"+xcoords[i][k]+','+ycoords[i][k];
-						svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
-						k++;
-					} else if (k < flags[i].length-2){
-						console.log('TODO: handle higher than n=3 b-splines');
-						svg += " C"+xcoords[i][k]+','+ycoords[i][k];
-						svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
-						svg += " "+xcoords[i][k+2]+','+ycoords[i][k+2];
-						k += 2;
-					}
-				}
-			}
-		}
-		svg += '"/>';
-		return svg;
-	}
-
-
-	function _StreamReader(arrayBuffer, offset) {
-		var i = offset || 0;
-		var view = new window.DataView(arrayBuffer, i);
-		// TODO: bounds checking
-		this.getInt8 = function() { return view.getInt8(i++); };
-		this.getUint8 = function() { return view.getUint8(i++); };
-		this.getInt16 = function() { return i+= 2,view.getInt16(i-2); };
-		this.getUint16 = function() { return i+= 2,view.getUint16(i-2); };
-		this.getInt32 = function() { return i += 4, view.getInt32(i-4); };
-		this.getUint32 = function() { return i += 4, view.getUint32(i-4); };
-		this.getFloat32 = function() { return i += 4, view.getFloat32(i-4); };
-		this.getInt64 = function() { this.getInt32() << 32 | this.getInt32(); }; //TODO: this is bollocks
-		this.backup = function(bytes) { i -= bytes; };
-		this.offset = function() { return i; };
-		this.goto = function(l) { i = Math.max(l,0); };
-
-		this.readString = function(count) {
-			var str = this.getStringAt(i, count);
-			i += count;
-			return str;
-		};
-		this.getStringAt = function(start, len) {
-			var str = '';
-			for (var k = 0; k < len; k++) {
-				str += String.fromCharCode(view.getInt8(start+k));
-			}
-			return str;
-		};
-		this.get32Fixed = function() {
-			var ret = 0.0;
-			ret = this.getInt16();
-			ret += (this.getInt16()/65536);
-			return ret;
-		};
-		this.getUint8Array = function(len) { 
-			var ret = [];
-			for (var i = 0; i < len; i++) {
-				ret[i] = this.getUint8();
-			} 
-			return ret;
-		};
-		this.getUint16Array = function(len) { 
-			var ret = [];
-			for (var i = 0; i < len; i++) {
-				ret[i] = this.getUint16();
-			} 
-			return ret;
-		};
-	}
-
-	var nameLabels =
-	['Copyright notice','Font family','Font subfamily','Subfamily identifier','Full name', 'Version',
-	'Postscript name','Trademark notice','Manufacturer name','Designer','Description','Vendor Url',
-	'Designer Url','License'];
-	var platformIds = 
-	['Unicode','Macintosh',undefined,'Microsoft'];
-
-	var macEncodingIds =
-	['Roman','Japansese','Traditional Chinese','Korean','Arabic','Hebrew','Greek','Russian','RSymbol',
-	'Devanagari','Gurmukhi','Gujarati','Oriya','Bengali','Tamil','Telugu','Kannada','Malayalam',
-	'Sinhalese','Burmese','Khmer','Thai','Laotian','Georgian','Armenian','Simplified Chinese','Tibetan',
-	'Mongolian','Geez','Slavic','Vietnamese','Sindhi'];
-
-	var uniEncodingIds = 
-	['Default semantics', 'Version 1.1 semantics', 'ISO 10646 1993 semantics (deprecated)',
-	'Unicode 2.0 or later semantics'];
-
-	var macRomanEncoding = 
-	['.notdef','.null','nonmarkingreturn','space','exclam','quotedbl','numbersign','dollar','percent','ampersand', 
-	'quotesingle','parenleft','parenright','asterisk','plus','comma','hyphen','period','slash','zero','one','two',
-	'three','four','five','six','seven','eight','nine','colon','semicolon','less','equal','greater','question','at',
-	'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','bracketleft',
-	'backslash','bracketright','asciicircum','underscore','grave','a','b','c','d','e','f','g','h','i','j','k','l','m','n',
-	'o','p','q','r','s','t','u','v','w','x','y','z','braceleft','bar','braceright','asciitilde','Adieresis','Aring',
-	'Ccedilla','Eacute','Ntilde','Odieresis','Udieresis','aacute','agrave','acircumflex','adieresis','atilde','aring',
-	'ccedilla','eacute','egrave','ecircumflex','edieresis','iacute','igrave','icircumflex','idieresis','ntilde','oacute',
-	'ograve','ocircumflex','odieresis','otilde','uacute','ugrave','ucircumflex','udieresis','dagger','degree','cent',
-	'sterling','section','bullet','paragraph','germandbls','registered','copyright','trademark','acute','dieresis',
-	'notequal','AE','Oslash','infinity','plusminus','lessequal','greaterequal','yen','mu','partialdiff','summation',
-	'product','pi','integral','ordfeminine','ordmasculine','Omega','ae','oslash','questiondown','exclamdown','logicalnot',
-	'radical','florin','approxequal','Delta','guillemotleft','guillemotright','ellipsis','nonbreakingspace','Agrave','Atilde',
-	'Otilde','OE','oe','endash','emdash','quotedblleft','quotedblright','quoteleft','quoteright','divide','lozenge','ydieresis',
-	'Ydieresis','fraction','currency','guilsinglleft','guilsinglright','fi','fl','daggerdbl','periodcentered','quotesinglbase',
-	'quotedblbase','perthousand','Acircumflex','Ecircumflex','Aacute','Edieresis','Egrave','Iacute','Icircumflex','Idieresis',
-	'Igrave','Oacute','Ocircumflex','apple','Ograve','Uacute','Ucircumflex','Ugrave','dotlessi','circumflex','tilde','macron',
-	'breve','dotaccent','ring','cedilla','hungarumlaut','ogonek','caron','Lslash','lslash','Scaron','scaron','Zcaron','zcaron',
-	'brokenbar','Eth','eth','Yacute','yacute','Thorn','thorn','minus','multiply','onesuperior','twosuperior','threesuperior',
-	'onehalf','onequarter','threequarters','franc','Gbreve','gbreve','Idotaccent','Scedilla','scedilla','Cacute','cacute',
-	'Ccaron','ccaron','dcroat']; // minify *this*
-
-	function getTableByTag(font, tag) {
-		var tb = font.tables.filter(function(tb) {
-			return tb.tag === tag;
-		});
-		return tb? tb[0]: undefined;
-	}
-
 	function readTableDirectory(slr) {
 		var ret = {};
 		ret.tag = slr.readString(4);
@@ -196,8 +23,8 @@
 			header.flags = slr.getUint16();
 			header.unitsPerEm = slr.getUint16();
 
-			header.created = slr.getInt64();
-			header.modified = slr.getInt64();
+			header.created = slr.getInternationalDate();
+			header.modified = slr.getInternationalDate();
 
 			header.xMin = slr.getInt16();
 			header.yMin = slr.getInt16();
@@ -511,29 +338,29 @@
 				switch (kern.coverage & 0x00ff) {
 					case 0:
 					// step 1: ignore these
-					var nPairs = slr.getUint16();
-					var searchRange = slr.getUint16();
-					var entrySelector = slr.getUint16();
-					var rangeShift = slr.getUint16();
-					kern.pairs = {};
-					for (var j = 0; j < kern.nPairs; j++) {
-						// step 2: remember that native code can search faster
-						var key = slr.getUint32();
-						var value = slr.getInt16();
-						kern.pairs[key] = value;
-					}
-					break;
+						var nPairs = slr.getUint16();
+						var searchRange = slr.getUint16();
+						var entrySelector = slr.getUint16();
+						var rangeShift = slr.getUint16();
+						kern.pairs = {};
+						for (var j = 0; j < kern.nPairs; j++) {
+							// step 2: remember that native code can search faster
+							var key = slr.getUint32();
+							var value = slr.getInt16();
+							kern.pairs[key] = value;
+						}
+						break;
 					case 2:
-					var rowWidth = slr.getUint16();
-					var leftOffsetTable = slr.getUint16();
-					var rightOffsetTable = slr.getUint16();
-					var array = slr.getUint16();
+						var rowWidth = slr.getUint16();
+						var leftOffsetTable = slr.getUint16();
+						var rightOffsetTable = slr.getUint16();
+						var array = slr.getUint16();
 
-					slr.goto(kern.start+leftOffsetTable);
-					kern.leftOffsetTable = loadKernF2OffsetTable(slr);
-					slr.goto(kern.start+rightOffsetTable);
-					kern.rightOffsetTable = loadKernF2OffsetTable(slr);
-					break;
+						slr.goto(kern.start+leftOffsetTable);
+						kern.leftOffsetTable = loadKernF2OffsetTable(slr);
+						slr.goto(kern.start+rightOffsetTable);
+						kern.rightOffsetTable = loadKernF2OffsetTable(slr);
+						break;
 				}
 				kerning.tables[i] = kern;
 			}
@@ -652,15 +479,7 @@
 			} while (component.flags & 0x20);
 		}
 	}
-	
-	function linearTransformX(comp, x, y) {
-		var x1 = Math.round(x * comp.xscale + y * comp.scale10);
-		return x1 + comp.xtranslate;
-	}
-	function linearTransformY(comp, x, y) {
-		var y1 = Math.round(x * comp.scale01 + y * comp.yscale);
-		return y1 + comp.ytranslate;
-	}
+
 	
 	Glyph.prototype = {
 		resolve: function(glyphs) {
@@ -838,7 +657,7 @@
 	};
 
 	function getFontFromResults(result) {
-		var slr = new _StreamReader(result);
+		var slr = new LinearStreamReader(result);
 		var font = new Font(slr);
 		font.version = slr.getUint32();
 		if (font.version !== 0x74727565 && font.version !== 0x00010000) {
@@ -882,5 +701,3 @@
 		}	
 		return deferred.promise();
 	}
-
-})(window, jQuery);

@@ -13,8 +13,13 @@ module.exports = function(grunt) {
     },
     concat: {
       dist: {
-        src: ['<banner:meta.banner>', '<file_strip_banner:src/<%= pkg.name %>.js>'],
-        dest: 'dist/<%= pkg.name %>.js'
+        src: ['<banner:meta.banner>', 
+					'<file_strip_banner:src/intro.js>',
+					'<file_strip_banner:src/<%= pkg.name %>.util.js>',
+					'<file_strip_banner:src/<%= pkg.name %>.core.js>',
+					'<file_strip_banner:src/<%= pkg.name %>.keyset.js>',
+					'<file_strip_banner:src/outro.js>'],
+		        dest: 'dist/<%= pkg.name %>.js'
       }
     },
     min: {
@@ -61,6 +66,6 @@ module.exports = function(grunt) {
   });
 
   // Default task.
-  grunt.registerTask('default', 'min');
+  grunt.registerTask('default', 'concat min');
 
 };
