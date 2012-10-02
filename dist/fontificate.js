@@ -1,4 +1,4 @@
-/*! fontificate.js - v0.0.1 - 2012-10-01
+/*! fontificate.js - v0.0.1 - 2012-10-02
 * https://github.com/samlecuyer/fontificate
 * Copyright (c) 2012 Sam L'Ecuyer; Licensed MIT */
 
@@ -6,9 +6,9 @@
 	if (typeof define === "function") {
 		define('fontificate', ['jquery'], module);
 	} else {
-		module(window, jQuery);
+		window.fontificate = module(jQuery);
 	}
-})(function(window, $, undefined) {
+})(function($, undefined) {
 	"use strict";
 
 
@@ -908,5 +908,5 @@ function getGlyphAsSVGPath(glyph) {
 	return svg;
 }
 
-
+	return fontificate;
 });

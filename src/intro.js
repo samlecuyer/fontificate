@@ -2,7 +2,7 @@
 	if (typeof define === "function") {
 		define('fontificate', ['jquery'], module);
 	} else {
-		module(window, jQuery);
+		window.fontificate = module(jQuery);
 	}
-})(function(window, $, undefined) {
+})(function($, undefined) {
 	"use strict";
