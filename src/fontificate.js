@@ -56,17 +56,21 @@
 					svg += " M"+xcoords[i][k]+','+ycoords[i][k];
 				} else if (flags[i][k] & 0x01) {
 					svg += " L"+xcoords[i][k]+','+ycoords[i][k];
-				} else if (k + 1 >= n || flags[i][k+1] & 0x01) {
-					svg += " Q"+xcoords[i][k]+','+ycoords[i][k];
-					svg += " "+xcoords[i][(k+1)%n]+','+ycoords[i][(k+1)%n];
-					k++;
-				} else if (k + 2 >= n || flags[i][k+2] & 0x01) {
-					svg += " C"+xcoords[i][k]+','+ycoords[i][k];
-					svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
-					svg += " "+xcoords[i][(k+2)%n]+','+ycoords[i][(k+2)%n];
-					k += 2;
 				} else {
-					console.log('TODO: handle higher than n=3 b-splines');
+					// On-curve points between two off-curve points are implied, for more
+					// information see: http://math.stackexchange.com/questions/36005
+					while (k < n && !(flags[i][k] & 0x01)) {
+						var x0 = xcoords[i][k];
+						var y0 = ycoords[i][k];
+						var x1 = xcoords[i][(k+1)%n];
+						var y1 = ycoords[i][(k+1)%n];
+						if (k + 1 < n && !(flags[i][k + 1] & 0x01)) {
+							x1 = (x0 + x1) / 2;
+							y1 = (y0 + y1) / 2;
+						}
+						svg += " Q"+x0+','+y0+" "+x1+','+y1;
+						k++;
+					}
 				}
 			}
 		}
