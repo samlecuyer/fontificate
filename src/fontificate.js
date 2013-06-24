@@ -49,23 +49,24 @@
 		ycoords = segments.ycoords, 
 		flags = segments.flags;
 		for (var i = 0; i < glyph.getContourCount(); i++) {
-			for (var k = 0; k < flags[i].length; k++) {
+			for (var k = 0, n = flags[i].length; k < n; k++) {
+				// Note: The last point of the last curve may wrap around to the
+				// first point again, so the last index should be taken mod n
 				if (k === 0) {
 					svg += " M"+xcoords[i][k]+','+ycoords[i][k];
 				} else if (flags[i][k] & 0x01) {
 					svg += " L"+xcoords[i][k]+','+ycoords[i][k];
+				} else if (k + 1 >= n || flags[i][k+1] & 0x01) {
+					svg += " Q"+xcoords[i][k]+','+ycoords[i][k];
+					svg += " "+xcoords[i][(k+1)%n]+','+ycoords[i][(k+1)%n];
+					k++;
+				} else if (k + 2 >= n || flags[i][k+2] & 0x01) {
+					svg += " C"+xcoords[i][k]+','+ycoords[i][k];
+					svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
+					svg += " "+xcoords[i][(k+2)%n]+','+ycoords[i][(k+2)%n];
+					k += 2;
 				} else {
-					if (flags[i][k+1] & 0x01 || k === flags[i].length-2) {
-						svg += " Q"+xcoords[i][k]+','+ycoords[i][k];
-						svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
-						k++;
-					} else if (k < flags[i].length-2){
-						console.log('TODO: handle higher than n=3 b-splines');
-						svg += " C"+xcoords[i][k]+','+ycoords[i][k];
-						svg += " "+xcoords[i][k+1]+','+ycoords[i][k+1];
-						svg += " "+xcoords[i][k+2]+','+ycoords[i][k+2];
-						k += 2;
-					}
+					console.log('TODO: handle higher than n=3 b-splines');
 				}
 			}
 		}
